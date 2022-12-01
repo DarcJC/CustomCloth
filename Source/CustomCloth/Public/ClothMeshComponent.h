@@ -10,6 +10,17 @@ class FPrimitiveSceneProxy;
 class FClothMeshSceneProxy;
 #pragma endregion Forward Decl
 
+// [X]: structural, [Y]: shear, [Z]: bending
+constexpr float Mass = 1.0f;
+constexpr float Cd = 0.5f;
+constexpr float StepTime = 0.003f;
+
+enum class ESpringType
+{
+	Structural = 0x00,
+	Shear,
+	Bending,
+};
 
 USTRUCT(BlueprintType)
 struct FClothMeshVertex
@@ -68,10 +79,19 @@ class CUSTOMCLOTH_API UClothMeshComponent : public UMeshComponent
 public:
 	void RecreateMesh();
 	void SendMeshDataToRenderThread() const;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	virtual void BeginPlay() override;
+	virtual void InitializeComponent() override;
+
+	explicit UClothMeshComponent(const FObjectInitializer& Initializer);
 
 private:
+	void GeneratePhysicalVertex();
 	void RecreateMeshData();
 	void UpdateLocalBounds();
+
+	// Phys
+	FVector3f GetForce(int32 VertId, const float DeltaTime);
 
 public:
 	//~ Begin UPrimitiveComponent Interface.
@@ -105,8 +125,23 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClothMeshComponent")
 	FColor ClothColor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClothMeshComponent")
+	int32 DestinyX;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClothMeshComponent")
+	int32 DestinyY;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClothMeshComponent")
+	float ElasticParam = 16.0f;
 	
 private:
 	UPROPERTY()
 	FBoxSphereBounds LocalBounds;
+
+	UPROPERTY()
+	FVector2D Padding;
+
+	UPROPERTY()
+	TArray<FVector3f> VertexVelocity;
 };
