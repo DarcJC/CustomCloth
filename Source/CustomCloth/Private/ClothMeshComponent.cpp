@@ -358,10 +358,10 @@ void UClothMeshComponent::SendMeshDataToRenderThread() const
 void UClothMeshComponent::RecreateMeshData()
 {
 	ClothMesh.Reset();
-
+	
 	const FVector LocalCenter = FVector::ZeroVector;
-	const FVector LocalXAxis { 1.0f, .0f, .0f };
-	const FVector LocalYAxis { 1.0f, .0f, .0f };
+	const FVector LocalXAxis {1.0, .0, .0};
+	const FVector LocalYAxis {.0, 1.0, .0};
 	const float Width = ClothSize.X;
 	const float Height = ClothSize.Y;
 	

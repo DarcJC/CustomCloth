@@ -1,0 +1,9 @@
+#include "/Engine/Public/Platform.ush"
+
+RWStructuredBuffer<float4> Positions;
+RWStructuredBuffer<float3> Velocities;
+
+[numthreads(8, 8, 1)]
+void MainCS(uint3 ID : SV_DispatchThreadID)
+{
+}
