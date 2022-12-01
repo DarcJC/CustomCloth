@@ -526,9 +526,11 @@ FVector3f UClothMeshComponent::GetForce(const int32 VertId, const float DeltaTim
 		ForceNum += 1.0f;
 	}
 
+	const float DT = StepTime * DeltaTime;
+
 	const FVector Transform = AccSpringForce / FMath::Max(1.0f, ForceNum);
-	ClothMesh.VertexBuffer[VertId].Position += FVector{Vel} * DeltaTime + static_cast<FVector>(0.5 * Vel * DeltaTime * DeltaTime);
-	const FVector3f NewVel = Vel + (Vel + static_cast<FVector3f>(Transform)) / 2 * DeltaTime;
+	ClothMesh.VertexBuffer[VertId].Position += FVector{Vel} * DT + static_cast<FVector>(0.5 * Vel * DT * DT);
+	const FVector3f NewVel = Vel + (Vel + static_cast<FVector3f>(Transform) + GV) / 2 * DT;
 	Vel = NewVel;
 	return Vel;
 }

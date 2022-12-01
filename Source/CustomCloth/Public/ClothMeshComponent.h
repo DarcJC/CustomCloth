@@ -13,7 +13,6 @@ class FClothMeshSceneProxy;
 // [X]: structural, [Y]: shear, [Z]: bending
 constexpr float Mass = 1.0f;
 constexpr float Cd = 0.5f;
-constexpr float StepTime = 0.003f;
 
 enum class ESpringType
 {
@@ -134,6 +133,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClothMeshComponent")
 	float ElasticParam = 16.0f;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ClothMeshComponent")
+	float StepTime = 2.0f;
 	
 private:
 	UPROPERTY()
