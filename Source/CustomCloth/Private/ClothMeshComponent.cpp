@@ -197,7 +197,7 @@ public:
 			Collector.RegisterOneFrameMaterialProxy(WireframeMaterialInstance);
 		}
 
-		const FMaterialRenderProxy* MaterialProxy = bWireframe ? WireframeMaterialInstance : UMaterial::GetDefaultMaterial(MD_Surface)->GetRenderProxy();
+		const FMaterialRenderProxy* MaterialProxy = bWireframe ? WireframeMaterialInstance : MaterialInterface->GetRenderProxy();
 		
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
@@ -321,7 +321,7 @@ public:
 
 private:
 	FMaterialRelevance MaterialRelevance;
-	UMaterialInterface* MaterialInterface;
+	UMaterialInterface* MaterialInterface = nullptr;
 
 	FColor ClothColor;
 
@@ -362,15 +362,14 @@ void UClothMeshComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	if (TickType != LEVELTICK_All) return;
 
-	const int32 Nums = ClothMesh.VertexBuffer.Num();
-	if (VertexVelocity.Num() < Nums)
+	for (const auto& Spring : Springs)
 	{
-		VertexVelocity.Init(FVector3f::ZeroVector, Nums);
+		Spring.ApplyForce(DeltaTime, FVector{0, 0, -0.098f});
 	}
-	for (int32 Idx = 0; Idx < Nums; ++Idx)
+
+	for (auto& Vertex : ClothMesh.VertexBuffer)
 	{
-		if (Idx == DestinyX * (DestinyY - 1) || Idx == DestinyX * DestinyY - 1) continue;
-		GetForce(Idx, DeltaTime);
+		Vertex.Position += Vertex.Velocity * DeltaTime;
 	}
 	
 	SendMeshDataToRenderThread();
@@ -418,6 +417,41 @@ void UClothMeshComponent::GeneratePhysicalVertex()
 		ClothMesh.IndexBuffer.Append({ static_cast<uint32>(N - DestinyX + 1), static_cast<uint32>(N + 1), static_cast<uint32>(N) });
 	}
 
+	if (DestinyX > 0)
+	{
+		ClothMesh.VertexBuffer[0].bDisablePhys = true;
+		ClothMesh.VertexBuffer[DestinyX - 1].bDisablePhys = true;
+	}
+
+	// Create Spring
+	Springs.Empty();
+	for (int32 N = 0; N < Nums; ++N)
+	{
+		// Struct Spring
+		const int32 VDown = N + DestinyX;
+		if (const int32 VRight = N + 1; (N + 1) % DestinyX != 0 && VRight < Nums)
+		{
+			Springs.Add({ static_cast<float>(Padding.X), &ClothMesh.VertexBuffer[N], &ClothMesh.VertexBuffer[VRight] });
+		}
+		if (VDown < Nums)
+		{
+			Springs.Add({ static_cast<float>(Padding.X), &ClothMesh.VertexBuffer[N], &ClothMesh.VertexBuffer[VDown] });
+		}
+		// Shear Spring
+		if (const int32 VRightDown = N + DestinyX + 1; (N + 1) % DestinyX != 0 && VRightDown < Nums)
+		{
+			FClothMassString NewSpring { static_cast<float>(Padding.X), &ClothMesh.VertexBuffer[N], &ClothMesh.VertexBuffer[VRightDown] };
+			NewSpring.SetParamPercent(0.7f, Sqrt2);
+			Springs.Add(NewSpring);
+		}
+		if (const int32 VLeftDown = N + DestinyX - 1; N % DestinyX != 0 && VLeftDown < Nums)
+		{
+			FClothMassString NewSpring { static_cast<float>(Padding.X), &ClothMesh.VertexBuffer[N], &ClothMesh.VertexBuffer[VLeftDown] };
+			NewSpring.SetParamPercent(0.7f, Sqrt2);
+			Springs.Add(NewSpring);
+		}
+	}
+
 	if (Nums == 0)
 	{
 		ClothMesh.VertexBuffer.Add(FClothMeshVertex{ { .0f, .0f, .0f} });
@@ -446,8 +480,6 @@ void UClothMeshComponent::RecreateMeshData()
 	FVector YOffset = LocalYAxis * Height * .5f;
 
 	GeneratePhysicalVertex();
-	VertexVelocity.Empty();
-	VertexVelocity.Init(FVector3f(), ClothMesh.VertexBuffer.Num());
 
 	UpdateLocalBounds();
 }
@@ -466,73 +498,6 @@ void UClothMeshComponent::UpdateLocalBounds()
 
 	UpdateBounds();
 	MarkRenderTransformDirty();
-}
-
-FVector3f UClothMeshComponent::GetForce(const int32 VertId, const float DeltaTime)
-{
-	FVector3f& Vel = VertexVelocity[VertId];
-	if (Vel.Length() > 10)
-	{
-		Vel.Normalize(500);
-	}
-	// Mass
-	// Only provide vertical force
-	const float GV = Mass * DeltaTime;
-
-	// Elastic
-	// Assume that mass of echo mass point is same
-	// F(p1, p2) = -0.5 * (|p1 - p2| - d) * (p1 - p2) / |p1-p2|
-	auto GetSpringForce = [this](const int32 VertId1, const int32 VertId2, bool bIsVertical) -> FVector
-	{
-		const float StaticLength = bIsVertical ? Padding.Y : Padding.X;
-
-		const FClothMeshVertex& P1 = ClothMesh.VertexBuffer[VertId1];
-		const FClothMeshVertex& P2 = ClothMesh.VertexBuffer[VertId2];
-
-		const FVector BToA = P1.Position - P2.Position;
-		const float Distance = FMath::Sqrt(BToA.Dot(BToA));
-		const FVector3d Dir = static_cast<FVector>((BToA / Distance).Normalize());
-		return -ElasticParam * (Distance - StaticLength) * Dir;
-	};
-
-	float ForceNum = .0f;
-	FVector AccSpringForce {ForceInitToZero};
-	// Up
-	if (VertId >= DestinyX)
-	{
-		const int32 VertIdOther = VertId - DestinyX;
-		AccSpringForce += GetSpringForce(VertId, VertIdOther, true);
-		ForceNum += 1.0f;
-	}
-	// Down
-	if (VertId < DestinyX * (DestinyY - 1))
-	{
-		const int32 VertIdOther = VertId + DestinyX;
-		AccSpringForce += GetSpringForce(VertId, VertIdOther, true);
-		ForceNum += 1.0f;
-	}
-	// Right
-	if ((VertId + 1) % DestinyX != 0 )
-	{
-		const int32 VertIdOther = VertId + 1;
-		AccSpringForce += GetSpringForce(VertId, VertIdOther, true);
-		ForceNum += 1.0f;
-	}
-	// Left
-	if (VertId % DestinyX != 0 )
-	{
-		const int32 VertIdOther = VertId - 1;
-		AccSpringForce += GetSpringForce(VertId, VertIdOther, true);
-		ForceNum += 1.0f;
-	}
-
-	const float DT = StepTime * DeltaTime;
-
-	const FVector Transform = AccSpringForce / FMath::Max(1.0f, ForceNum);
-	ClothMesh.VertexBuffer[VertId].Position += FVector{Vel} * DT + static_cast<FVector>(0.5 * Vel * DT * DT);
-	const FVector3f NewVel = Vel + (Vel + static_cast<FVector3f>(Transform) + GV) / 2 * DT;
-	Vel = NewVel;
-	return Vel;
 }
 
 FPrimitiveSceneProxy* UClothMeshComponent::CreateSceneProxy()
