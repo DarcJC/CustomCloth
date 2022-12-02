@@ -364,7 +364,7 @@ void UClothMeshComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	for (const auto& Spring : Springs)
 	{
-		Spring.ApplyForce(DeltaTime, FVector{0, 0, -0.098f});
+		Spring.ApplyForce(DeltaTime, FVector{0, 0, 0.098f});
 	}
 
 	for (auto& Vertex : ClothMesh.VertexBuffer)
